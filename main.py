@@ -315,10 +315,20 @@ def main(_):
             ds = Dataset.create(**ds_dict)
         
         if FLAGS.sparse:
-            # Create a new dataset with modified rewards instead of trying to modify the frozen one
-            sparse_rewards = (ds["rewards"] != 0.0) * -1.0
+            # 원본 보존용 dict로 복사
             ds_dict = {k: v for k, v in ds.items()}
-            ds_dict["rewards"] = sparse_rewards
+
+            r = np.asarray(ds_dict["rewards"])
+            r_new = r.copy()
+
+            zeros_mask = np.isclose(r_new, 0.0)
+            ones_mask  = np.isclose(r_new, 1.0)
+
+            # 치환: 0.0 -> -1.0, 1.0 -> 0.0
+            r_new[zeros_mask] = -1.0
+            r_new[ones_mask]  = 0.0
+
+            ds_dict["rewards"] = r_new
             ds = Dataset.create(**ds_dict)
 
         return ds
