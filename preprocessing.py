@@ -12,9 +12,9 @@ import traceback
 
 # 1. 원본 .pkl 파일들이 포함된 폴더 경로 목록
 INPUT_DIRS = [
-    '../data/cleanup_table_two_waste/2025-08-19',
-    '../data/cleanup_table/2025-08-19',
-    '../data/cleanup_random/2025-08-20',
+    '/home/work/AGI/QC-FQL/data/cleanup_table_two_waste/2025-08-19',
+    '/home/work/AGI/QC-FQL/data/cleanup_table/2025-08-19',
+    '/home/work/AGI/QC-FQL/data/cleanup_random/2025-08-20',
 ]
 
 # 2. 전처리된 .h5 파일들이 저장될 폴더 경로
