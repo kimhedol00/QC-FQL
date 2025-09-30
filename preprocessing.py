@@ -21,9 +21,9 @@ INPUT_DIRS = [
 OUTPUT_DIR = './preprocessed_datasets_state_masked'
 
 # ---- 기본값(기존 동작 유지용) ----
-DEFAULT_STATE_KEEP = np.array([0, 1, 2, 3, 4, 5, 6], dtype=np.int32)  # 기존 코드와 동일
+DEFAULT_STATE_KEEP = np.array([19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37], dtype=np.int32)  # 기존 코드와 동일
 # ACTION(길이 14): 기본적으로 마스킹 안 함
-DEFAULT_ACTION_KEEP = np.array([0, 1, 2, 6])  # None이면 원본 유지
+DEFAULT_ACTION_KEEP = np.array([7,8,9,13])  # None이면 원본 유지
 
 
 # ========== 공통 유틸 ==========
