@@ -37,11 +37,12 @@ class ACFQLAgent(flax.struct.PyTreeNode):
         # We now use tree_map to apply the slicing to each array within the dict.
         
         # Helper lambda function to get the last element in a sequence
-        get_last_in_seq = lambda arr: arr[:, -1]
         
-        # Apply this function to the entire next_observations dictionary
-        last_next_obs = jax.tree_util.tree_map(get_last_in_seq, batch['next_observations'])
-        
+        get_last = lambda arr: jax.numpy.take(arr, indices=-1, axis=1)
+        last_next_obs = jax.tree_util.tree_map(get_last, batch['next_observations'])
+
+
+
         # TD loss
         rng, sample_rng = jax.random.split(rng)
         # Use the processed last_next_obs dictionary
@@ -140,7 +141,6 @@ class ACFQLAgent(flax.struct.PyTreeNode):
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
-
         loss = critic_loss + actor_loss
         return loss, info
 
@@ -363,7 +363,7 @@ def get_config():
             ob_dims=ml_collections.config_dict.placeholder(dict),  # Observation dimensions (will be set automatically).
             action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
             lr=3e-4,  # Learning rate.
-            batch_size=64,  # Batch size.
+            batch_size=32,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
@@ -375,7 +375,7 @@ def get_config():
             num_qs=2, # critic ensemble size
             flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
-            encoder='robotics_multi_image_small',  # Visual encoder name (None, 'impala_small', etc.).
+            encoder='robotics_multi_image_small',  #z Visual encoder name (None, 'impala_small', etc.).
             horizon_length=ml_collections.config_dict.placeholder(int), # will be set
             action_chunking=True,  # False means n-step return
             actor_type="distill-ddpg",

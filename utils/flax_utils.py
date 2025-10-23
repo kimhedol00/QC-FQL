@@ -10,6 +10,9 @@ import jax
 import jax.numpy as jnp
 import optax
 
+import numpy as np
+import random
+
 nonpytree_field = functools.partial(flax.struct.field, pytree_node=False)
 
 
@@ -213,3 +216,39 @@ def restore_agent(agent, restore_path, restore_epoch):
     print(f'Restored from {restore_path}')
 
     return agent
+
+def restore_full_checkpoint(agent, rl_buffer, demo_buffer, ckpt_path):
+    assert os.path.exists(ckpt_path), f"{ckpt_path} not found"
+    with open(ckpt_path, "rb") as f:
+        ckpt = pickle.load(f)
+
+    agent = flax.serialization.from_state_dict(agent, ckpt["agent"])
+
+    if "rl_buffer" in ckpt and rl_buffer is not None and hasattr(rl_buffer.__class__, "from_state_dict"):
+        rb = rl_buffer.__class__.from_state_dict(ckpt["rl_buffer"])
+        rl_buffer._dict = rb._dict
+        rl_buffer.size = rb.size
+        rl_buffer.pointer = rb.pointer
+        rl_buffer.max_size = rb.max_size
+
+    if "demo_buffer" in ckpt and demo_buffer is not None and hasattr(demo_buffer.__class__, "from_state_dict"):
+        db = demo_buffer.__class__.from_state_dict(ckpt["demo_buffer"])
+        demo_buffer._dict = db._dict
+        demo_buffer.size = db.size
+        demo_buffer.pointer = db.pointer
+        demo_buffer.max_size = db.max_size
+
+    if "rng" in ckpt:
+        try:
+            if ckpt["rng"].get("numpy") is not None:
+                np.random.set_state(ckpt["rng"]["numpy"])
+        except Exception:
+            pass
+        try:
+            if ckpt["rng"].get("python") is not None:
+                random.setstate(ckpt["rng"]["python"])
+        except Exception:
+            pass
+
+    meta = ckpt.get("meta", {})
+    return agent, meta
