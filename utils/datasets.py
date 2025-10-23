@@ -8,11 +8,11 @@ import jax.tree_util # <<< CHANGED: jax.tree_util 임포트 추가
 
 def get_size(data):
     """Return the size of the dataset."""
-    # sizes = jax.tree_util.tree_map(lambda arr: len(arr), data)
+    # sizes = tree_map(lambda arr: len(arr), data)
     # return max(jax.tree_util.tree_leaves(sizes))
     # MODIFIED: data가 딕셔너리일 때도 올바르게 동작하도록 수정
     if isinstance(data, dict):
-        sizes = jax.tree_util.tree_map(lambda arr: len(arr), data)
+        sizes = tree_map(lambda arr: len(arr), data)
         return max(jax.tree_util.tree_leaves(sizes))
     return len(data)
 
@@ -30,6 +30,23 @@ def random_crop(img, crop_from, padding):
     return jax.lax.dynamic_slice(padded_img, crop_from, img.shape)
 
 
+def tree_map(f, tree):
+    # If it's a list, apply the function recursively to each item
+    if isinstance(tree, list):
+        return [tree_map(f, item) for item in tree]
+    
+    # If it's a tuple, apply the function recursively to each item
+    elif isinstance(tree, tuple):
+        return tuple(tree_map(f, item) for item in tree)
+    
+    # If it's a dictionary, apply the function to both keys and values recursively
+    elif isinstance(tree, dict):
+        return {key: tree_map(f, value) for key, value in tree.items()}
+    
+    # Otherwise, apply the function to the element itself (base case)
+    else:
+        return f(tree)
+
 @partial(jax.jit, static_argnames=('padding',))
 def batched_random_crop(imgs, crop_froms, padding):
     """Batched version of random_crop."""
@@ -40,7 +57,7 @@ class Dataset(FrozenDict):
     """Dataset class."""
 
     @classmethod
-    def create(cls, freeze=True, **fields):
+    def create(cls, freeze=False, **fields):
         """Create a dataset from the fields.
 
         Args:
@@ -54,8 +71,8 @@ class Dataset(FrozenDict):
                 if hasattr(arr, 'setflags'):
                     arr.setflags(write=False)
                 return arr
-            jax.tree_util.tree_map(_freeze, data)
-            # jax.tree_util.tree_map(lambda arr: arr.setflags(write=False), data)
+            tree_map(_freeze, data)
+            # tree_map(lambda arr: arr.setflags(write=False), data)
         return cls(data)
 
     def __init__(self, *args, **kwargs):
@@ -86,13 +103,13 @@ class Dataset(FrozenDict):
             for i in reversed(range(self.frame_stack)):
                 # Use the initial state if the index is out of bounds.
                 cur_idxs = np.maximum(idxs - i, initial_state_idxs)
-                obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
+                obs.append(tree_map(lambda arr: arr[cur_idxs], self['observations']))
                 if i != self.frame_stack - 1:
-                    next_obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
-            next_obs.append(jax.tree_util.tree_map(lambda arr: arr[idxs], self['next_observations']))
+                    next_obs.append(tree_map(lambda arr: arr[cur_idxs], self['observations']))
+            next_obs.append(tree_map(lambda arr: arr[idxs], self['next_observations']))
 
-            batch['observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
-            batch['next_observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
+            batch['observations'] = tree_map(lambda *args: np.concatenate(args, axis=-1), obs)
+            batch['next_observations'] = tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
         if self.p_aug is not None:
             # Apply random-crop image augmentation.
             if np.random.rand() < self.p_aug:
@@ -102,13 +119,13 @@ class Dataset(FrozenDict):
     def sample_sequence(self, batch_size, sequence_length, discount):
         """
         MODIFIED: This function now correctly handles nested dictionaries for
-        observations using jax.tree_util.tree_map.
+        observations using tree_map.
         """
         idxs = np.random.randint(self.size - sequence_length + 1, size=batch_size)
 
         # Helper function to index arrays or map indexing over dictionaries
         def get_batch(data, indices):
-            return jax.tree_util.tree_map(lambda arr: arr[indices], data)
+            return tree_map(lambda arr: arr[indices], data)
 
         batch = get_batch(self._dict, idxs)
 
@@ -119,11 +136,11 @@ class Dataset(FrozenDict):
         full_sequence_batch = get_batch(self._dict, all_idxs)
 
         # Reshape each leaf in the observations pytree
-        batch_observations = jax.tree_util.tree_map(
+        batch_observations = tree_map(
             lambda arr: arr.reshape(batch_size, sequence_length, *arr.shape[1:]),
             full_sequence_batch['observations']
         )
-        batch_next_observations = jax.tree_util.tree_map(
+        batch_next_observations = tree_map(
             lambda arr: arr.reshape(batch_size, sequence_length, *arr.shape[1:]),
             full_sequence_batch['next_observations']
         )
@@ -169,7 +186,7 @@ class Dataset(FrozenDict):
         
     def get_subset(self, idxs):
         """Return a subset of the dataset given the indices."""
-        result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
+        result = tree_map(lambda arr: arr[idxs], self._dict)
         if self.return_next_actions:
             # WARNING: This is incorrect at the end of the trajectory. Use with caution.
             result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
@@ -182,7 +199,7 @@ class Dataset(FrozenDict):
         crop_froms = np.random.randint(0, 2 * padding + 1, (batch_size, 2))
         crop_froms = np.concatenate([crop_froms, np.zeros((batch_size, 1), dtype=np.int64)], axis=1)
         for key in keys:
-            batch[key] = jax.tree_util.tree_map(
+            batch[key] = tree_map(
                 lambda arr: np.array(batched_random_crop(arr, crop_froms, padding)) if len(arr.shape) == 4 else arr,
                 batch[key],
             )
@@ -207,7 +224,7 @@ class ReplayBuffer(Dataset):
             example = np.array(example)
             return np.zeros((size, *example.shape), dtype=example.dtype)
 
-        buffer_dict = jax.tree_util.tree_map(create_buffer, transition)
+        buffer_dict = tree_map(create_buffer, transition)
         return cls(buffer_dict)
 
     @classmethod
@@ -224,7 +241,7 @@ class ReplayBuffer(Dataset):
             buffer[: len(init_buffer)] = init_buffer
             return buffer
 
-        buffer_dict = jax.tree_util.tree_map(create_buffer, init_dataset)
+        buffer_dict = tree_map(create_buffer, init_dataset)
         dataset = cls(buffer_dict)
         dataset.size = dataset.pointer = get_size(init_dataset)
         return dataset
@@ -242,7 +259,7 @@ class ReplayBuffer(Dataset):
         def set_idx(buffer, new_element):
             buffer[self.pointer] = new_element
 
-        jax.tree_util.tree_map(set_idx, self._dict, transition)
+        tree_map(set_idx, self._dict, transition)
         self.pointer = (self.pointer + 1) % self.max_size
         self.size = max(self.pointer, self.size)
 
@@ -264,12 +281,12 @@ def add_history(dataset, history_length):
     for i in reversed(range(1, history_length)):
         cur_idxs = np.maximum(idxs - i, initial_state_idxs)
         outside = (idxs - i < initial_state_idxs)[..., None]
-        obs_rets.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs] * (~outside) + jnp.zeros_like(arr[cur_idxs]) * outside, 
+        obs_rets.append(tree_map(lambda arr: arr[cur_idxs] * (~outside) + jnp.zeros_like(arr[cur_idxs]) * outside, 
             dataset['observations']))
-        acts_rets.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs] * (~outside) + jnp.zeros_like(arr[cur_idxs]) * outside, 
+        acts_rets.append(tree_map(lambda arr: arr[cur_idxs] * (~outside) + jnp.zeros_like(arr[cur_idxs]) * outside, 
             dataset['actions']))
-    observation_history, action_history = jax.tree_util.tree_map(lambda *args: np.stack(args, axis=-2), *obs_rets),\
-        jax.tree_util.tree_map(lambda *args: np.stack(args, axis=-2), *acts_rets)
+    observation_history, action_history = tree_map(lambda *args: np.stack(args, axis=-2), *obs_rets),\
+        tree_map(lambda *args: np.stack(args, axis=-2), *acts_rets)
 
     dataset = Dataset(dataset.copy(dict(
         observation_history=observation_history,
