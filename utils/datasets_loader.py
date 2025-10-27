@@ -31,7 +31,7 @@ def load_chunk(task):
         print(f"\n[경고] 파일 처리 중 오류 '{path}': {e}")
         return 0 # 오류 발생 시 0 반환
 
-def load_dataset_dir(path, num_workers = 1):
+def load_dataset_dir(path, num_workers = 1, state_normalization=True , action_normalization=True):
     # 1. 모든 데이터셋의 키와 최종 크기를 미리 계산합니다.
     print("Step 1/3: Calculating total dataset size...")
     dataset_paths = sorted(glob.glob(os.path.join(path, '*.h*5')))
@@ -123,7 +123,7 @@ def load_dataset_dir(path, num_workers = 1):
     train_dataset = {
         'observations': {
             'image_head': final_data['observations/image_head'],
-            'image_wrist_left': final_data['observations/image_wrist_left'],
+            'image_front': final_data['observations/image_front'],
             'image_wrist_right': final_data['observations/image_wrist_right'],
             'state': final_data['observations/state'],
         },
@@ -132,7 +132,7 @@ def load_dataset_dir(path, num_workers = 1):
         'terminals': final_data['terminals'],
         'next_observations': {
             'image_head': final_data['next_observations/image_head'],
-            'image_wrist_left': final_data['next_observations/image_wrist_left'],
+            'image_front': final_data['next_observations/image_front'],
             'image_wrist_right': final_data['next_observations/image_wrist_right'],
             'state': final_data['next_observations/state'],
         },
@@ -141,6 +141,39 @@ def load_dataset_dir(path, num_workers = 1):
     # D4RL 데이터셋 형식에 맞게 'timeouts'와 'masks' 추가
     train_dataset['timeouts'] = train_dataset['terminals']
     train_dataset['masks'] = 1.0 - train_dataset['terminals']
+
+
+
+
+
+    states = train_dataset['observations']['state']
+    actions = train_dataset['actions']
+
+    state_mean = np.mean(states, axis=0)
+    state_std = np.std(states, axis=0) + 1e-6
+    action_mean = np.mean(actions, axis=0)
+    action_std = np.std(actions, axis=0) + 1e-6
+
+    if state_normalization:
+        train_dataset['observations']['state'] = (states - state_mean) / state_std
+        train_dataset['next_observations']['state'] = (
+            train_dataset['next_observations']['state'] - state_mean
+        ) / state_std
+    
+    if action_normalization:
+        # train_dataset['actions'] = (actions - action_mean) / action_std
+        
+        action_min = np.min(actions, axis=0)
+        action_max = np.max(actions, axis=0)
+        action_range = action_max - action_min
+        action_range_safe = np.where(action_range == 0.0, 1.0, action_range)
+
+        scaled_actions = (actions - action_min) / action_range_safe  # [0,1]
+        scaled_actions = scaled_actions * 2.0 - 1.0  # [-1,1]
+
+        train_dataset['actions'] = scaled_actions
+
+
     return train_dataset
 
 
